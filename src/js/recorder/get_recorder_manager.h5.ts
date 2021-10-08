@@ -11,7 +11,7 @@ class RecorderSingleton implements Taro.RecorderManager {
     sampleRate: 8000,
     numberOfChannels: 2,
     encodeBitRate: 48000,
-    format: 'aac',
+    format: 'wav',
     frameSize: 4096,
     audioSource: 'auto'
   }
@@ -31,8 +31,8 @@ class RecorderSingleton implements Taro.RecorderManager {
   format: number = 1
 
   mediaStream: MediaStream
-  mediaNode: MediaStreamAudioSourceNode
-  jsNode: ScriptProcessorNode
+  mediaStreamAudioSourceNode: MediaStreamAudioSourceNode
+  scriptProcessorNode: ScriptProcessorNode
   option: Taro.RecorderManager.StartOption
   defaultOption: Taro.RecorderManager.StartOption
   startCallback: (res: Taro.General.CallbackResult) => void
@@ -81,11 +81,11 @@ class RecorderSingleton implements Taro.RecorderManager {
     try {
       this.mediaStream = (await window.navigator.mediaDevices.getUserMedia({ audio: options || true }))
       const audioContext = new this.SelfAudioContext();
-      this.mediaNode = audioContext.createMediaStreamSource(this.mediaStream as MediaStream);
-      this.jsNode = this.createJSNode(audioContext, defaultOption.frameSize, defaultOption.numberOfChannels, defaultOption.numberOfChannels)
-      this.jsNode.connect(audioContext.destination);
-      this.jsNode.onaudioprocess = this.onAudioProcess;
-      this.mediaNode.connect(this.jsNode);
+      this.mediaStreamAudioSourceNode = audioContext.createMediaStreamSource(this.mediaStream as MediaStream);
+      this.scriptProcessorNode = this.createJSNode(audioContext, defaultOption.frameSize, defaultOption.numberOfChannels, defaultOption.numberOfChannels)
+      this.scriptProcessorNode.connect(audioContext.destination);
+      this.scriptProcessorNode.onaudioprocess = this.onAudioProcess;
+      this.mediaStreamAudioSourceNode.connect(this.scriptProcessorNode);
       this.isStartRecording = true
       this.startCallback && this.startCallback({ errMsg: 'record is start!' })
     } catch (error) {
@@ -105,8 +105,8 @@ class RecorderSingleton implements Taro.RecorderManager {
     if (!this.isStartRecording) return
     console.log(this.monoDataList)
     this.mediaStream?.getAudioTracks()[0].stop();
-    this.mediaNode?.disconnect();
-    this.jsNode?.disconnect();
+    this.mediaStreamAudioSourceNode?.disconnect();
+    this.scriptProcessorNode?.disconnect();
     const allData: Float32Array = this.getChannelData()
     const bitDepth = this.format === 3 ? 32 : 16
     const wavBuffer: ArrayBuffer = encodeWAV(allData, this.format, this.currentRecorderSampleRate, this.defaultOption.numberOfChannels!, bitDepth)
@@ -175,7 +175,7 @@ class RecorderSingleton implements Taro.RecorderManager {
     console.log(audioBuffer.getChannelData(0))
 
     if (Object.prototype.hasOwnProperty.call(this.option, 'frameSize')) {
-      this.dataProcessWorker.postMessage({ float32Array: audioBuffer.getChannelData(0), newSampleRate: this.defaultOption.sampleRate, oldSampleRate: audioBuffer.sampleRate })
+      this.dataProcessWorker.postMessage({ float32Array: this.defaultOption.numberOfChannels === 2 ? this.interleaveLeftAndRight(audioBuffer.getChannelData(0), audioBuffer.getChannelData(1)) : audioBuffer.getChannelData(0), newSampleRate: this.defaultOption.sampleRate, oldSampleRate: audioBuffer.sampleRate })
     }
   }
 
@@ -196,8 +196,7 @@ class RecorderSingleton implements Taro.RecorderManager {
     for (let i = 0; i < len; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
-    // 格式类型有待根据接口传入的参数修改
-    return `data:audio/wav;base64,${window.btoa(binary)}`;
+    return `data:audio/${this.defaultOption.format};base64,${window.btoa(binary)}`;
   }
 
   getBlobUrl(arrayBuffer: ArrayBuffer) {

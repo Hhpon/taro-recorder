@@ -5,6 +5,10 @@ import './index.scss'
 
 export default class Index extends Component {
 
+  state = {
+    recorderAudioSrc: ''
+  }
+
   componentWillMount() { }
 
   componentDidMount() { }
@@ -24,6 +28,7 @@ export default class Index extends Component {
     })
     recorderManager.onStop((res) => {
       console.log(res);
+      this.setState({recorderAudioSrc: res.tempFilePath})
     })
     recorderManager.start({
       sampleRate: 16000,
@@ -39,8 +44,9 @@ export default class Index extends Component {
   render() {
     return (
       <View className='index'>
-        <Button onClick={this.startRecord}>开始录音</Button>
-        <Button onClick={this.stopRecord}>结束录音</Button>
+        <Button onClick={this.startRecord.bind(this)}>开始录音</Button>
+        <Button onClick={this.stopRecord.bind(this)}>结束录音</Button>
+        <audio controls src={this.state.recorderAudioSrc}></audio>
       </View>
     )
   }
